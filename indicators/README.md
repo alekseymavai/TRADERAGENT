@@ -112,38 +112,91 @@ You can modify the script to:
 
 ### No Visualization Appearing?
 
-If you don't see Fibonacci levels or buy signals after adding the indicator:
+**IMPORTANT: Check the Debug Table First!**
 
-1. **Check Signal Conditions**: The indicator requires ALL three conditions simultaneously:
-   - 3 consecutive bearish candles (close < open)
-   - RSI below 30 (oversold)
-   - MACD bullish crossover with negative histogram
+The indicator now includes a **debug table in the top-right corner** of your chart that shows:
+- **Buy Signals**: Total number of signals triggered (RED if 0, GREEN if > 0)
+- **RSI**: Current RSI value (GREEN when < 30 oversold)
+- **Fib Active**: Whether Fibonacci lines are currently drawn (YES/NO)
+- **Swing Range**: Calculated high-low range for validation
+- **3 Bearish**: Whether 3 consecutive bearish candles condition is met
+- **Status**: Overall status message
 
-   These conditions may be rare on some timeframes/assets. Try:
-   - Looking at longer historical data (scroll back further)
-   - Testing on volatile assets (BTC, ETH) with 4H or 1D timeframes
-   - Adjusting RSI threshold (increase to 35-40 for more signals)
+#### Step 1: Check "Buy Signals" Counter
 
-2. **Verify Settings**:
-   - Ensure "Show Fibonacci Levels" is enabled in indicator settings
-   - Ensure "Show Buy Signals" is enabled
-   - Check that "Show Level Labels" is enabled to see the level markers
+**If "Buy Signals: 0" (RED background):**
+- This is the most common issue - signals haven't triggered yet!
+- The indicator requires ALL three conditions simultaneously:
+  - 3 consecutive bearish candles (close < open)
+  - RSI below 30 (oversold)
+  - MACD bullish crossover with negative histogram
 
-3. **Chart Requirements**:
-   - Need at least 100+ bars of history (default Fibonacci lookback period)
-   - Indicator works best with sufficient price data
+**Solutions:**
+- Scroll through historical data (especially during market downturns)
+- Try volatile assets: BTC/USD, ETH/USD, high-volatility altcoins
+- Try different timeframes: 4H, 1D, or 1H
+- Temporarily adjust RSI threshold to 35-40 in settings for more signals
+- Watch for visual markers: "3" (bearish candles), "R" (RSI oversold), "M" (MACD cross)
 
-4. **Script Compilation**:
-   - Make sure there are no compilation errors in Pine Editor
-   - Code should be Pine Script v5 compatible
+**If "Buy Signals: 5" (GREEN) but "Fib Active: NO":**
+- Lines should be drawn! Check if they're off-screen
+- Zoom out vertically to see full price range
+- Scroll to the bar where the signal triggered (green triangle)
 
-### Common Issues
+**If "Buy Signals: 5" (GREEN) and "Fib Active: YES":**
+- Lines ARE drawn and should be visible!
+- Look for 7 colored horizontal lines extending to the right
+- Lines are now thicker (width 2-3) and all solid for better visibility
+- If still not visible, check TradingView zoom/scale settings
 
-- **Lines not extending**: Lines now use `extend=extend.right` to automatically extend to chart edge
-- **Labels not showing**: Labels appear at signal bar with left alignment
-- **Old signals disappearing**: By design, only the most recent signal's Fibonacci levels are shown
+#### Step 2: Visual Condition Markers
+
+The indicator shows small characters when individual conditions are met:
+- **"3"** (orange, above bar): Three bearish candles condition met
+- **"R"** (blue, below bar): RSI oversold condition met
+- **"M"** (purple, bottom): MACD bullish crossover occurred
+
+When you see all three markers appear together + green triangle = full buy signal + Fibonacci lines!
+
+#### Step 3: Test with Simple Version
+
+If you're still unsure if the drawing mechanism works:
+
+1. Use the test version: `experiments/fibonacci_tower_simple_test.pine`
+2. This version triggers on EVERY bearish candle (much more frequent)
+3. If you see frequent lines with the test version → main indicator logic is correctly stricter
+4. If you see NO lines with test version → there may be a TradingView/browser issue
+
+#### Common Issues
+
+- **"Buy Signals: 0" is normal**: Signal conditions are strict by design. This is expected behavior, not a bug.
+- **Lines not visible**: Lines use `extend=extend.right` and width 2-3 for maximum visibility
+- **Labels overlap**: Labels appear at signal bar with left alignment and white text on colored backgrounds
+- **Old signals replaced**: By design, only the most recent signal's Fibonacci levels are shown
+
+#### Verification Checklist
+
+✅ Debug table visible in top-right corner
+✅ "Buy Signals" counter shows current count
+✅ Tried multiple timeframes (1H, 4H, 1D)
+✅ Scrolled through historical data
+✅ Tested on volatile assets (BTC/USD, ETH/USD)
+✅ Watched for "3", "R", "M" condition markers
+✅ Settings have "Show Fibonacci Levels" enabled
+✅ Settings have "Show Buy Signals" enabled
+✅ No compilation errors in Pine Editor
 
 ## Version History
+
+- **v1.2**: Enhanced visualization and debugging (2025-01-27)
+  - Added debug table showing buy signals count, RSI, Fibonacci status, and more
+  - Added visual condition markers ("3", "R", "M") for individual conditions
+  - Enhanced validation with `fibLevelsActive` flag and safe calculations
+  - Improved line visibility: increased width (2-3), all solid lines, better colors
+  - Improved label visibility: white text on semi-transparent backgrounds
+  - Added safe deletion checks for lines and labels
+  - Added comprehensive validation before drawing (fibRange > 0 check)
+  - Created simple test version for verifying drawing mechanism
 
 - **v1.1**: Bug fixes for visualization (2025-01-27)
   - Fixed line rendering using `extend=extend.right` instead of future bar indices
