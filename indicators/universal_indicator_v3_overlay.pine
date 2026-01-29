@@ -126,29 +126,37 @@ calcLogFibPrice(float lowPrice, float highPrice, float level, bool isBullish) =>
         logHigh = math.log(highPrice)
         logRange = logHigh - logLow
 
+        // Declare logPrice variable before using it
+        float logPrice = na
+
         if isBullish
             // For bullish: build from Low to High
             // level 0.0 = High, level 1.0 = Low
             // Negative levels go above High
-            logPrice = logHigh - (logRange * level)
+            logPrice := logHigh - (logRange * level)
         else
             // For bearish: build from High to Low
             // level 0.0 = High, level 1.0 = Low
             // Negative levels go above High
-            logPrice = logHigh - (logRange * level)
+            logPrice := logHigh - (logRange * level)
 
         result := math.exp(logPrice)
     result
 
 // Function to draw Fibonacci levels with logarithmic scale
 // Функция для отрисовки уровней Фибоначчи с логарифмической шкалой
+// Returns [candleLow, candleHigh, isBullish] for table display
 drawFibonacci(float candleLow, float candleHigh, int signalBar, bool isBullish) =>
+    var float returnLow = na
+    var float returnHigh = na
+    var bool returnIsBullish = false
+
     if not na(candleLow) and not na(candleHigh) and candleLow > 0 and candleHigh > 0 and candleHigh > candleLow
 
-        // Store for table display / Сохранить для отображения в таблице
-        lastLowPrice := candleLow
-        lastHighPrice := candleHigh
-        lastSignalIsBullish := isBullish
+        // Store for return values / Сохранить для возврата значений
+        returnLow := candleLow
+        returnHigh := candleHigh
+        returnIsBullish := isBullish
 
         // Define Fibonacci levels with trading annotations
         // Определение уровней Фибоначчи с торговыми аннотациями
@@ -234,6 +242,9 @@ drawFibonacci(float candleLow, float candleHigh, int signalBar, bool isBullish) 
 
                     array.push(activeFibLabels, newLabel)
 
+    // Return values for table display / Возврат значений для отображения в таблице
+    [returnLow, returnHigh, returnIsBullish]
+
 // ============================================================================
 // ОБРАБОТКА СИГНАЛОВ / SIGNAL HANDLING
 // ============================================================================
@@ -250,7 +261,10 @@ if bullishSignal and showBullishFib
 
     // Draw new Fibonacci levels from Low to High (bullish)
     // Отрисовка новых уровней Фибоначчи от Low до High (бычий)
-    drawFibonacci(candleLow, candleHigh, bar_index, true)
+    [returnedLow, returnedHigh, returnedIsBullish] = drawFibonacci(candleLow, candleHigh, bar_index, true)
+    lastLowPrice := returnedLow
+    lastHighPrice := returnedHigh
+    lastSignalIsBullish := returnedIsBullish
 
 // Handle bearish signals / Обработка медвежьих сигналов
 if bearishSignal and showBearishFib
@@ -264,7 +278,10 @@ if bearishSignal and showBearishFib
 
     // Draw new Fibonacci levels from High to Low (bearish)
     // Отрисовка новых уровней Фибоначчи от High до Low (медвежий)
-    drawFibonacci(candleLow, candleHigh, bar_index, false)
+    [returnedLow, returnedHigh, returnedIsBullish] = drawFibonacci(candleLow, candleHigh, bar_index, false)
+    lastLowPrice := returnedLow
+    lastHighPrice := returnedHigh
+    lastSignalIsBullish := returnedIsBullish
 
 // ============================================================================
 // ТАБЛИЦА УРОВНЕЙ / LEVELS TABLE
