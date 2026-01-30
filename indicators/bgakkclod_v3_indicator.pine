@@ -9,9 +9,11 @@ indicator("BGAKKCLOD v3", shorttitle="BGAKv3", overlay=true, max_lines_count=500
 // ============================================================================
 // BGAKKCLOD v3 - улучшенная версия с исправлением определения медвежьих сигналов,
 // новым интерфейсом отображения и обновленными уровнями Фибоначчи (issue #59)
+// и новой логикой определения entry candle после сигнала (issue #60)
 //
 // BGAKKCLOD v3 - improved version with fixed bearish signal detection,
 // new display interface and updated Fibonacci levels (issue #59)
+// and new entry candle detection logic after signal (issue #60)
 //
 // Основные улучшения v3:
 // - Исправлено построение Фибоначчи для медвежьих сигналов
@@ -22,6 +24,14 @@ indicator("BGAKKCLOD v3", shorttitle="BGAKv3", overlay=true, max_lines_count=500
 // - Отображение Фибоначчи только на последних не отработанных свечах
 // - Новая структура уровней Фибоначчи с TP и входами (issue #59)
 // - Таблица информации на графике вверху справа (issue #59)
+//
+// Улучшения issue #60:
+// - Ждём появления сигнала индикатора (Burj Khalifa mode)
+// - После сигнала ищем первую зелёную (бычью) свечу — это entry candle
+// - Подсвечиваем entry candle
+// - Строим уровни Фибоначчи от Low до High entry candle
+// - Важно: используем логарифмическую шкалу
+// - По аналогии для медвежьих сигналов
 
 // ============================================================================
 // ВХОДНЫЕ ПАРАМЕТРЫ / INPUTS
@@ -102,18 +112,39 @@ if bullishSignal or bearishSignal
     lastSignalBar := bar_index
 
 // ============================================================================
+// ОПРЕДЕЛЕНИЕ ТИПА СВЕЧИ / CANDLE TYPE DETECTION
+// ============================================================================
+
+// Detect bullish and bearish candles for entry candle logic (issue #60)
+// Определяем бычьи и медвежьи свечи для логики entry candle (issue #60)
+bool isBullishCandle = close > open
+bool isBearishCandle = close < open
+
+// ============================================================================
 // ПОДСВЕТКА СВЕЧЕЙ / CANDLE HIGHLIGHTING
 // ============================================================================
 
-// Highlight signal candles with custom colors
-// Подсветка сигнальных свечей пользовательскими цветами
-candleColor = color(na)
-if highlightBullishCandles and bullishSignal
-    candleColor := bullishCandleColor
-else if highlightBearishCandles and bearishSignal
-    candleColor := bearishCandleColor
+// Issue #60: Highlight entry candles (not signal candles)
+// Issue #60: Подсвечиваем entry candles (не сигнальные свечи)
 
-barcolor(candleColor, title="Signal Candle Color")
+// Determine if current candle is an entry candle
+// Определяем, является ли текущая свеча entry candle
+bool isCurrentEntryCandle = false
+color candleHighlightColor = na
+
+// Check if this is a bullish entry candle
+// Проверяем, является ли это бычьей entry candle
+if waitingForBullishEntryCandle and isBullishCandle and highlightBullishCandles and showBullishFib
+    isCurrentEntryCandle := true
+    candleHighlightColor := bullishCandleColor
+
+// Check if this is a bearish entry candle
+// Проверяем, является ли это медвежьей entry candle
+if waitingForBearishEntryCandle and isBearishCandle and highlightBearishCandles and showBearishFib
+    isCurrentEntryCandle := true
+    candleHighlightColor := bearishCandleColor
+
+barcolor(candleHighlightColor, title="Entry Candle Color")
 
 // ============================================================================
 // УПРАВЛЕНИЕ ФИБОНАЧЧИ / FIBONACCI MANAGEMENT
@@ -133,6 +164,15 @@ var float signalCandleHigh = na
 var int signalBarIndex = na
 var int lastBullishBarForTable = na
 var int lastBearishBarForTable = na
+
+// Store entry candle information (issue #60)
+// Хранение информации о entry candle (issue #60)
+var bool waitingForBullishEntryCandle = false
+var bool waitingForBearishEntryCandle = false
+var int entryCandleBarIndex = na
+var float entryCandleLow = na
+var float entryCandleHigh = na
+var bool isEntryCandleBullish = false
 
 // Function to delete old Fibonacci objects
 // Функция для удаления старых объектов Фибоначчи
@@ -262,36 +302,54 @@ drawFibonacci(float candleLow, float candleHigh, int sigBar, bool isBullish) =>
 // ОБРАБОТКА СИГНАЛОВ / SIGNAL HANDLING
 // ============================================================================
 
-// Handle bullish signals / Обработка бычьих сигналов
-if bullishSignal and showBullishFib
-    // Delete old Fibonacci levels / Удаление старых уровней Фибоначчи
-    deleteOldFibonacci()
+// Issue #60: New logic - wait for entry candle after signal
+// Issue #60: Новая логика - ждём entry candle после сигнала
 
-    // Store signal information / Сохранение информации о сигнале
-    signalCandleLow := low[0]
-    signalCandleHigh := high[0]
-    signalBarIndex := bar_index
-    lastSignalIsBullish := true
+// When bullish signal appears, start waiting for first green candle
+// Когда появляется бычий сигнал, начинаем ждать первую зелёную свечу
+if bullishSignal
+    waitingForBullishEntryCandle := true
+    waitingForBearishEntryCandle := false
     lastBullishBarForTable := bar_index
-
-    // Draw Fibonacci levels / Отрисовка уровней Фибоначчи
-    drawFibonacci(signalCandleLow, signalCandleHigh, bar_index, true)
-
-// Handle bearish signals / Обработка медвежьих сигналов
-if bearishSignal and showBearishFib
     // Delete old Fibonacci levels / Удаление старых уровней Фибоначчи
     deleteOldFibonacci()
 
-    // Store signal information / Сохранение информации о сигнале
-    signalCandleLow := low[0]
-    signalCandleHigh := high[0]
-    signalBarIndex := bar_index
-    lastSignalIsBullish := false
+// When bearish signal appears, start waiting for first red candle
+// Когда появляется медвежий сигнал, начинаем ждать первую красную свечу
+if bearishSignal
+    waitingForBearishEntryCandle := true
+    waitingForBullishEntryCandle := false
     lastBearishBarForTable := bar_index
+    // Delete old Fibonacci levels / Удаление старых уровней Фибоначчи
+    deleteOldFibonacci()
 
-    // Draw Fibonacci levels / Отрисовка уровней Фибоначчи
-    // ИСПРАВЛЕНИЕ: теперь правильно строит для медвежьих сигналов
-    drawFibonacci(signalCandleLow, signalCandleHigh, bar_index, false)
+// Detect first green (bullish) candle after bullish signal
+// Определяем первую зелёную (бычью) свечу после бычьего сигнала
+if waitingForBullishEntryCandle and isBullishCandle and showBullishFib
+    // Found entry candle! / Нашли entry candle!
+    waitingForBullishEntryCandle := false
+    entryCandleBarIndex := bar_index
+    entryCandleLow := low[0]
+    entryCandleHigh := high[0]
+    isEntryCandleBullish := true
+
+    // Draw Fibonacci levels from entry candle Low to High
+    // Рисуем уровни Фибоначчи от Low до High entry candle
+    drawFibonacci(entryCandleLow, entryCandleHigh, bar_index, true)
+
+// Detect first red (bearish) candle after bearish signal
+// Определяем первую красную (медвежью) свечу после медвежьего сигнала
+if waitingForBearishEntryCandle and isBearishCandle and showBearishFib
+    // Found entry candle! / Нашли entry candle!
+    waitingForBearishEntryCandle := false
+    entryCandleBarIndex := bar_index
+    entryCandleLow := low[0]
+    entryCandleHigh := high[0]
+    isEntryCandleBullish := false
+
+    // Draw Fibonacci levels from entry candle Low to High
+    // Рисуем уровни Фибоначчи от Low до High entry candle
+    drawFibonacci(entryCandleLow, entryCandleHigh, bar_index, false)
 
 // ============================================================================
 // ТАБЛИЦА ИНФОРМАЦИИ НА ГРАФИКЕ / INFO TABLE ON CHART
@@ -438,3 +496,33 @@ alertcondition(bearishSignal, "Bearish Signal",
 // IMPORTANT: Pine Script doesn't support hover events directly.
 // Displaying Fibonacci on cursor hover requires using TradingView's
 // built-in features (click on candle to view data).
+//
+// Обновления согласно issue #60:
+// Updates according to issue #60:
+//
+// 8. Новая логика определения entry candle:
+//    New entry candle detection logic:
+//    - Ждём появления сигнала индикатора (Big Guy в режиме Burj Khalifa)
+//    - Wait for indicator signal (Big Guy in Burj Khalifa mode)
+//    - После сигнала ищем первую зелёную (бычью) свечу — это entry candle
+//    - After signal, find first green (bullish) candle — this is entry candle
+//    - Подсвечиваем entry candle (не сигнальную свечу)
+//    - Highlight entry candle (not the signal candle)
+//    - Строим уровни Фибоначчи от Low до High entry candle
+//    - Draw Fibonacci levels from entry candle Low to High
+//    - Используем логарифмическую шкалу (уже реализовано в v3)
+//    - Use logarithmic scale (already implemented in v3)
+//    - По аналогии для медвежьих сигналов (первая красная свеча после сигнала)
+//    - Same logic for bearish signals (first red candle after signal)
+//
+// 9. Состояние ожидания entry candle:
+//    Entry candle waiting state:
+//    - waitingForBullishEntryCandle - флаг ожидания бычьей entry candle
+//    - waitingForBearishEntryCandle - флаг ожидания медвежьей entry candle
+//    - entryCandleBarIndex - индекс бара entry candle
+//    - entryCandleLow, entryCandleHigh - Low и High entry candle
+//
+// 10. Определение типа свечи:
+//     Candle type detection:
+//     - isBullishCandle = close > open (зелёная/бычья свеча)
+//     - isBearishCandle = close < open (красная/медвежья свеча)
