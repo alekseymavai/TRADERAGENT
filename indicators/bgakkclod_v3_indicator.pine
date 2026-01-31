@@ -56,6 +56,12 @@ minConsecutiveBars = input.int(2, "Min Consecutive High Volume Bars / Мин. б
 useDirectionalVolume = input.bool(true, "Use Directional Volume / Направленный объём", group="🎯 Signal Detection")
 useImprovedMomentum = input.bool(true, "Use Improved Momentum Formula / Улучш. формула моментума", group="🎯 Signal Detection")
 
+// Issue #68: RSI Divergence Detection Settings
+enableDivergenceDetection = input.bool(true, "Enable Divergence Detection / Определение дивергенций", group="🔍 Divergence Settings")
+divergenceLookback = input.int(5, "Divergence Lookback (bars) / Период поиска (баров)", minval=2, maxval=20, group="🔍 Divergence Settings")
+minDivergenceStrength = input.float(0.05, "Min Divergence Strength / Мин. сила дивергенции", minval=0.01, step=0.01, group="🔍 Divergence Settings")
+showDivergenceLines = input.bool(true, "Show Divergence Lines / Показать линии дивергенций", group="🔍 Divergence Settings")
+
 // Fibonacci Settings / Настройки Фибоначчи
 showBullishFib = input.bool(true, "Show Bullish Fibonacci / Показать бычьи уровни", group="📊 Fibonacci Levels")
 showBearishFib = input.bool(true, "Show Bearish Fibonacci / Показать медвежьи уровни", group="📊 Fibonacci Levels")
@@ -134,6 +140,138 @@ if detectVolumeClusters and volumeCluster
     strongMomentum := true
 
 // ============================================================================
+// Issue #68: RSI DIVERGENCE DETECTION / ОПРЕДЕЛЕНИЕ ДИВЕРГЕНЦИЙ RSI
+// ============================================================================
+
+// Find pivot points for price
+// Поиск локальных экстремумов для цены
+pivotLow = ta.pivotlow(low, divergenceLookback, divergenceLookback)
+pivotHigh = ta.pivothigh(high, divergenceLookback, divergenceLookback)
+
+// Find pivot points for RSI
+// Поиск локальных экстремумов для RSI
+rsiPivotLow = ta.pivotlow(rsi, divergenceLookback, divergenceLookback)
+rsiPivotHigh = ta.pivothigh(rsi, divergenceLookback, divergenceLookback)
+
+// Store previous pivot values
+// Хранение предыдущих значений экстремумов
+var float prevPriceLow = na
+var float prevPriceHigh = na
+var float prevRsiLow = na
+var float prevRsiHigh = na
+var int prevPriceLowBar = na
+var int prevPriceHighBar = na
+
+// Update previous pivots when new pivot is found
+// Обновление предыдущих экстремумов при обнаружении новых
+if not na(pivotLow)
+    prevPriceLow := pivotLow
+    prevPriceLowBar := bar_index - divergenceLookback
+
+if not na(pivotHigh)
+    prevPriceHigh := pivotHigh
+    prevPriceHighBar := bar_index - divergenceLookback
+
+if not na(rsiPivotLow)
+    prevRsiLow := rsiPivotLow
+
+if not na(rsiPivotHigh)
+    prevRsiHigh := rsiPivotHigh
+
+// Detect bullish divergence
+// Обнаружение бычьей дивергенции
+// Price makes lower low, RSI makes higher low
+// Цена формирует более низкий минимум, RSI формирует более высокий минимум
+bullishDivergence = false
+bullishDivergenceStrength = 0.0
+
+if enableDivergenceDetection and not na(pivotLow) and not na(prevPriceLow) and not na(rsiPivotLow) and not na(prevRsiLow)
+    // Check if price made a lower low
+    priceLowerLow = pivotLow < prevPriceLow
+    // Check if RSI made a higher low
+    rsiHigherLow = rsiPivotLow > prevRsiLow
+    // Check if RSI is in oversold zone
+    inOversoldZone = rsiPivotLow < rsiOversold
+
+    if priceLowerLow and rsiHigherLow and inOversoldZone
+        bullishDivergence := true
+        // Calculate divergence strength
+        // Вычисление силы дивергенции
+        bullishDivergenceStrength := prevRsiLow != 0 ? (rsiPivotLow - prevRsiLow) / prevRsiLow : 0.0
+
+// Detect bearish divergence
+// Обнаружение медвежьей дивергенции
+// Price makes higher high, RSI makes lower high
+// Цена формирует более высокий максимум, RSI формирует более низкий максимум
+bearishDivergence = false
+bearishDivergenceStrength = 0.0
+
+if enableDivergenceDetection and not na(pivotHigh) and not na(prevPriceHigh) and not na(rsiPivotHigh) and not na(prevRsiHigh)
+    // Check if price made a higher high
+    priceHigherHigh = pivotHigh > prevPriceHigh
+    // Check if RSI made a lower high
+    rsiLowerHigh = rsiPivotHigh < prevRsiHigh
+    // Check if RSI is in overbought zone
+    inOverboughtZone = rsiPivotHigh > rsiOverbought
+
+    if priceHigherHigh and rsiLowerHigh and inOverboughtZone
+        bearishDivergence := true
+        // Calculate divergence strength
+        // Вычисление силы дивергенции
+        bearishDivergenceStrength := prevRsiHigh != 0 ? (prevRsiHigh - rsiPivotHigh) / prevRsiHigh : 0.0
+
+// Filter weak divergences
+// Фильтрация слабых дивергенций
+strongBullishDivergence = bullishDivergence and bullishDivergenceStrength > minDivergenceStrength
+strongBearishDivergence = bearishDivergence and bearishDivergenceStrength > minDivergenceStrength
+
+// Draw divergence lines
+// Отрисовка линий дивергенций
+var line[] divergenceLines = array.new<line>()
+
+// Limit number of divergence lines on chart
+// Ограничение количества линий дивергенций на графике
+maxDivergenceLines = 10
+
+if showDivergenceLines and strongBullishDivergence and not na(prevPriceLowBar)
+    // Clean up old lines if too many
+    if array.size(divergenceLines) >= maxDivergenceLines
+        oldLine = array.shift(divergenceLines)
+        line.delete(oldLine)
+
+    // Draw bullish divergence line
+    // Рисуем линию бычьей дивергенции
+    newLine = line.new(
+        x1 = prevPriceLowBar,
+        y1 = prevPriceLow,
+        x2 = bar_index - divergenceLookback,
+        y2 = pivotLow,
+        color = color.new(color.green, 50),
+        style = line.style_dashed,
+        width = 2
+    )
+    array.push(divergenceLines, newLine)
+
+if showDivergenceLines and strongBearishDivergence and not na(prevPriceHighBar)
+    // Clean up old lines if too many
+    if array.size(divergenceLines) >= maxDivergenceLines
+        oldLine = array.shift(divergenceLines)
+        line.delete(oldLine)
+
+    // Draw bearish divergence line
+    // Рисуем линию медвежьей дивергенции
+    newLine = line.new(
+        x1 = prevPriceHighBar,
+        y1 = prevPriceHigh,
+        x2 = bar_index - divergenceLookback,
+        y2 = pivotHigh,
+        color = color.new(color.red, 50),
+        style = line.style_dashed,
+        width = 2
+    )
+    array.push(divergenceLines, newLine)
+
+// ============================================================================
 // ЛОГИКА ОПРЕДЕЛЕНИЯ СИГНАЛОВ / SIGNAL DETECTION LOGIC
 // ============================================================================
 
@@ -142,20 +280,42 @@ if detectVolumeClusters and volumeCluster
 // - Сглаженный RSI растет (подтверждение разворота)
 // - Объемный моментум сильный (подтверждение интереса покупателей)
 // Issue #67: Added directional volume confirmation
+// Issue #68: Added RSI divergence detection
 bullishTransition = ta.crossover(rsi, rsiOversold)
 rsiRising = rsiSmooth > rsiSmooth[1]
 bullishDirectionalConfirm = useDirectionalVolume ? isBuyingPressure : true
-bullishSignalRaw = bullishTransition and strongMomentum and rsiRising and bullishDirectionalConfirm
+
+// Original signal logic (RSI crossover + momentum)
+bullishSignalOriginal = bullishTransition and strongMomentum and rsiRising and bullishDirectionalConfirm
+
+// Divergence-based signal (strong divergence + momentum)
+// Сигнал на основе дивергенции (сильная дивергенция + моментум)
+bullishSignalDivergence = enableDivergenceDetection and strongBullishDivergence and strongMomentum
+
+// Combined signal: either original or divergence
+// Комбинированный сигнал: либо оригинальный, либо дивергенция
+bullishSignalRaw = bullishSignalOriginal or bullishSignalDivergence
 
 // Bearish Signal / Медвежий сигнал:
 // - RSI пересекает сверху вниз уровень перекупленности
 // - Сглаженный RSI падает (подтверждение разворота)
 // - Объемный моментум сильный (подтверждение давления продавцов)
 // Issue #67: Added directional volume confirmation
+// Issue #68: Added RSI divergence detection
 bearishTransition = ta.crossunder(rsi, rsiOverbought)
 rsiFalling = rsiSmooth < rsiSmooth[1]
 bearishDirectionalConfirm = useDirectionalVolume ? isSellingPressure : true
-bearishSignalRaw = bearishTransition and strongMomentum and rsiFalling and bearishDirectionalConfirm
+
+// Original signal logic (RSI crossover + momentum)
+bearishSignalOriginal = bearishTransition and strongMomentum and rsiFalling and bearishDirectionalConfirm
+
+// Divergence-based signal (strong divergence + momentum)
+// Сигнал на основе дивергенции (сильная дивергенция + моментум)
+bearishSignalDivergence = enableDivergenceDetection and strongBearishDivergence and strongMomentum
+
+// Combined signal: either original or divergence
+// Комбинированный сигнал: либо оригинальный, либо дивергенция
+bearishSignalRaw = bearishSignalOriginal or bearishSignalDivergence
 
 // Filter signals to avoid too frequent triggers
 // Фильтр сигналов для избежания слишком частых срабатываний
@@ -420,7 +580,7 @@ if waitingForBearishEntryCandle and isBearishCandle and showBearishFib
 // According to issue #59: data table is displayed on chart at top-right
 
 if showInfoTable
-    var table infoTable = table.new(position.top_right, 2, 11,
+    var table infoTable = table.new(position.top_right, 2, 13,
                                      border_width=1,
                                      border_color=color.gray,
                                      frame_width=1,
@@ -487,6 +647,18 @@ if showInfoTable
         clusterColor = volumeCluster ? color.new(color.green, 80) : color.new(color.gray, 80)
         table.cell(infoTable, 0, 10, "Volume Cluster", bgcolor=color.new(color.gray, 90), text_size=size.small)
         table.cell(infoTable, 1, 10, clusterStatus, bgcolor=clusterColor, text_size=size.small)
+
+        // Issue #68: Bullish Divergence Status
+        bullishDivStatus = strongBullishDivergence ? "Detected" : "None"
+        bullishDivColor = strongBullishDivergence ? color.new(color.green, 80) : color.new(color.gray, 80)
+        table.cell(infoTable, 0, 11, "Bullish Divergence", bgcolor=color.new(color.gray, 90), text_size=size.small)
+        table.cell(infoTable, 1, 11, bullishDivStatus, bgcolor=bullishDivColor, text_size=size.small)
+
+        // Issue #68: Bearish Divergence Status
+        bearishDivStatus = strongBearishDivergence ? "Detected" : "None"
+        bearishDivColor = strongBearishDivergence ? color.new(color.red, 80) : color.new(color.gray, 80)
+        table.cell(infoTable, 0, 12, "Bearish Divergence", bgcolor=color.new(color.gray, 90), text_size=size.small)
+        table.cell(infoTable, 1, 12, bearishDivStatus, bgcolor=bearishDivColor, text_size=size.small)
 
 // ============================================================================
 // НИЖНЯЯ ПАНЕЛЬ ИНДИКАТОРА / BOTTOM INDICATOR PANEL
@@ -654,3 +826,53 @@ alertcondition(bearishSignal, "Bearish Signal",
 //     - Backward compatibility with previous version
 //     - Гибкая настройка под разные рынки и таймфреймы
 //     - Flexible configuration for different markets and timeframes
+//
+// Обновления согласно issue #68:
+// Updates according to issue #68:
+//
+// 16. Определение дивергенций RSI:
+//     RSI divergence detection:
+//     - Бычья дивергенция: цена формирует более низкий минимум, RSI более высокий минимум
+//     - Bullish divergence: price makes lower low, RSI makes higher low
+//     - Медвежья дивергенция: цена формирует более высокий максимум, RSI более низкий максимум
+//     - Bearish divergence: price makes higher high, RSI makes lower high
+//     - Использует ta.pivotlow() и ta.pivothigh() для поиска локальных экстремумов
+//     - Uses ta.pivotlow() and ta.pivothigh() to find local extrema
+//
+// 17. Оценка силы дивергенции:
+//     Divergence strength assessment:
+//     - Вычисляет процентное изменение между экстремумами RSI
+//     - Calculates percentage change between RSI extrema
+//     - Фильтрует слабые дивергенции через минимальный порог силы
+//     - Filters weak divergences through minimum strength threshold
+//     - minDivergenceStrength по умолчанию 0.05 (5%)
+//     - minDivergenceStrength defaults to 0.05 (5%)
+//
+// 18. Визуализация дивергенций:
+//     Divergence visualization:
+//     - Рисует пунктирные линии между экстремумами цены
+//     - Draws dashed lines between price extrema
+//     - Зелёные линии для бычьих дивергенций
+//     - Green lines for bullish divergences
+//     - Красные линии для медвежьих дивергенций
+//     - Red lines for bearish divergences
+//     - Ограничение до 10 линий на графике для производительности
+//     - Limited to 10 lines on chart for performance
+//
+// 19. Интеграция дивергенций в логику сигналов:
+//     Integration of divergences into signal logic:
+//     - Дивергенции дополняют существующие сигналы RSI
+//     - Divergences complement existing RSI signals
+//     - Сигнал генерируется при: (RSI crossover + momentum) ИЛИ (divergence + momentum)
+//     - Signal generated when: (RSI crossover + momentum) OR (divergence + momentum)
+//     - Не заменяют, а усиливают общую логику определения сигналов
+//     - Do not replace, but enhance overall signal detection logic
+//
+// 20. Настройки дивергенций:
+//     Divergence settings:
+//     - enableDivergenceDetection - включение/выключение определения дивергенций
+//     - divergenceLookback - период поиска экстремумов (2-20 баров)
+//     - minDivergenceStrength - минимальная сила дивергенции для фильтрации
+//     - showDivergenceLines - показ линий дивергенций на графике
+//     - Все параметры настраиваются пользователем
+//     - All parameters are user-configurable
